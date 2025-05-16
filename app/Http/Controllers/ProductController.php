@@ -1,0 +1,225 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Product;
+use App\Models\Business;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
+
+class ProductController extends Controller
+{
+    public function index(Request $request, Business $business)
+    {
+        $products = $business->products()
+            ->when($request->search, function($query) use ($request) {
+                $query->where(function($q) use ($request) {
+                    $q->where('name', 'like', "%{$request->search}%")
+                      ->orWhere('sku', 'like', "%{$request->search}%")
+                      ->orWhere('barcode', 'like', "%{$request->search}%");
+                });
+            })
+            ->when($request->category_id, fn($q) => $q->where('category_id', $request->category_id))
+            ->when($request->type, fn($q) => $q->ofType($request->type))
+            ->when($request->active, fn($q) => $q->active())
+            ->when($request->featured, fn($q) => $q->featured())
+            ->when($request->stock_status, function($query) use ($request) {
+                match($request->stock_status) {
+                    'in_stock' => $query->inStock(),
+                    'low_stock' => $query->lowStock(),
+                    'out_of_stock' => $query->whereDoesntHave('inventory', function($q) {
+                        $q->where('available_quantity', '>', 0);
+                    }),
+                    default => null
+                };
+            })
+            ->with(['category:id,name', 'inventory'])
+            ->latest()
+            ->paginate($request->per_page ?? 10);
+
+        return $this->paginatedResponse($products);
+    }
+
+    public function store(Request $request, Business $business)
+    {
+        $validator = Validator::make($request->all(), [
+            'name' => 'required|string|max:255',
+            'category_id' => [
+                'nullable',
+                'exists:categories,id',
+                function($attribute, $value, $fail) use ($business) {
+                    if ($value) {
+                        $category = \App\Models\Category::find($value);
+                        if ($category->business_id !== $business->id) {
+                            $fail('The selected category does not belong to this business.');
+                        }
+                    }
+                },
+            ],
+            'description' => 'nullable|string',
+            'barcode' => 'nullable|string|max:50|unique:products,barcode',
+            'cost_price' => 'required|numeric|min:0',
+            'selling_price' => 'required|numeric|min:0',
+            'wholesale_price' => 'nullable|numeric|min:0',
+            'discount_price' => 'nullable|numeric|min:0',
+            'discount_start_date' => 'nullable|date|required_with:discount_price',
+            'discount_end_date' => 'nullable|date|after_or_equal:discount_start_date',
+            'unit' => 'required|string|max:20',
+            'is_featured' => 'boolean',
+            'is_digital' => 'boolean',
+            'track_inventory' => 'boolean',
+            'alert_quantity' => 'required|integer|min:0',
+            'type' => ['required', Rule::in(['bakery', 'cake_tool'])],
+            'attributes' => 'nullable|array',
+            'metadata' => 'nullable|array',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->errorResponse($validator->errors()->first());
+        }
+
+        $product = $business->products()->create($validator->validated());
+
+        // Create initial inventory records for all stores
+        $business->stores()->each(function($store) use ($product) {
+            $store->inventory()->create([
+                'business_id' => $product->business_id,
+                'product_id' => $product->id,
+                'quantity' => 0,
+                'available_quantity' => 0,
+            ]);
+        });
+
+        return $this->successResponse($product, 'Product created successfully', 201);
+    }
+
+    public function show(Business $business, Product $product)
+    {
+        if ($product->business_id !== $business->id) {
+            return $this->errorResponse('Product does not belong to this business', 403);
+        }
+
+        $product->load([
+            'category',
+            'inventory.store',
+        ]);
+
+        return $this->successResponse($product);
+    }
+
+    public function update(Request $request, Business $business, Product $product)
+    {
+        if ($product->business_id !== $business->id) {
+            return $this->errorResponse('Product does not belong to this business', 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'name' => 'required|string|max:255',
+            'category_id' => [
+                'nullable',
+                'exists:categories,id',
+                function($attribute, $value, $fail) use ($business) {
+                    if ($value) {
+                        $category = \App\Models\Category::find($value);
+                        if ($category->business_id !== $business->id) {
+                            $fail('The selected category does not belong to this business.');
+                        }
+                    }
+                },
+            ],
+            'description' => 'nullable|string',
+            'barcode' => ['nullable', 'string', 'max:50', Rule::unique('products')->ignore($product->id)],
+            'cost_price' => 'required|numeric|min:0',
+            'selling_price' => 'required|numeric|min:0',
+            'wholesale_price' => 'nullable|numeric|min:0',
+            'discount_price' => 'nullable|numeric|min:0',
+            'discount_start_date' => 'nullable|date|required_with:discount_price',
+            'discount_end_date' => 'nullable|date|after_or_equal:discount_start_date',
+            'unit' => 'required|string|max:20',
+            'is_featured' => 'boolean',
+            'is_digital' => 'boolean',
+            'track_inventory' => 'boolean',
+            'alert_quantity' => 'required|integer|min:0',
+            'type' => ['required', Rule::in(['bakery', 'cake_tool'])],
+            'attributes' => 'nullable|array',
+            'metadata' => 'nullable|array',
+            'is_active' => 'boolean',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->errorResponse($validator->errors()->first());
+        }
+
+        $product->update($validator->validated());
+
+        return $this->successResponse($product, 'Product updated successfully');
+    }
+
+    public function destroy(Business $business, Product $product)
+    {
+        if ($product->business_id !== $business->id) {
+            return $this->errorResponse('Product does not belong to this business', 403);
+        }
+
+        // Check if product has any inventory movements
+        if ($product->inventoryMovements()->exists()) {
+            return $this->errorResponse('Cannot delete product with inventory history', 400);
+        }
+
+        $product->delete();
+
+        return $this->successResponse(null, 'Product deleted successfully');
+    }
+
+    public function toggleStatus(Business $business, Product $product)
+    {
+        if ($product->business_id !== $business->id) {
+            return $this->errorResponse('Product does not belong to this business', 403);
+        }
+
+        $product->update(['is_active' => !$product->is_active]);
+
+        return $this->successResponse([
+            'is_active' => $product->is_active
+        ], 'Product status updated successfully');
+    }
+
+    public function toggleFeatured(Business $business, Product $product)
+    {
+        if ($product->business_id !== $business->id) {
+            return $this->errorResponse('Product does not belong to this business', 403);
+        }
+
+        $product->update(['is_featured' => !$product->is_featured]);
+
+        return $this->successResponse([
+            'is_featured' => $product->is_featured
+        ], 'Product featured status updated successfully');
+    }
+
+    public function updatePrices(Request $request, Business $business, Product $product)
+    {
+        if ($product->business_id !== $business->id) {
+            return $this->errorResponse('Product does not belong to this business', 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'cost_price' => 'required|numeric|min:0',
+            'selling_price' => 'required|numeric|min:0',
+            'wholesale_price' => 'nullable|numeric|min:0',
+            'discount_price' => 'nullable|numeric|min:0',
+            'discount_start_date' => 'nullable|date|required_with:discount_price',
+            'discount_end_date' => 'nullable|date|after_or_equal:discount_start_date',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->errorResponse($validator->errors()->first());
+        }
+
+        $product->update($validator->validated());
+
+        return $this->successResponse($product, 'Product prices updated successfully');
+    }
+} 
