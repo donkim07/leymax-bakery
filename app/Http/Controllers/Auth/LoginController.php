@@ -27,7 +27,7 @@ class LoginController extends Controller
      *
      * @var string
      */
-    protected $redirectTo = RouteServiceProvider::HOME;
+    protected $redirectTo = '/dashboard';
 
     /**
      * Create a new controller instance.
@@ -91,21 +91,16 @@ class LoginController extends Controller
     }
 
     /**
-     * Get the needed authorization credentials from the request.
+     * Get the login username to be used by the controller.
      *
-     * @param  \Illuminate\Http\Request  $request
-     * @return array
+     * @return string
      */
-    protected function credentials(Request $request)
+    public function username()
     {
-        $field = filter_var($request->input($this->username()), FILTER_VALIDATE_EMAIL)
-            ? 'email'
-            : 'username';
-
-        return [
-            $field => $request->input($this->username()),
-            'password' => $request->input('password'),
-        ];
+        $login = request()->input('login');
+        $field = filter_var($login, FILTER_VALIDATE_EMAIL) ? 'email' : 'username';
+        request()->merge([$field => $login]);
+        return $field;
     }
 
     /**
@@ -119,8 +114,69 @@ class LoginController extends Controller
     protected function validateLogin(Request $request)
     {
         $request->validate([
-            $this->username() => 'required|string',
+            'login' => 'required|string',
             'password' => 'required|string',
         ]);
+    }
+
+    /**
+     * Send the response after the user was authenticated.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Illuminate\Http\RedirectResponse|\Illuminate\Http\JsonResponse
+     */
+    protected function sendLoginResponse(Request $request)
+    {
+        $request->session()->regenerate();
+
+        $this->clearLoginAttempts($request);
+
+        // Update last login information
+        $user = $this->guard()->user();
+        $user->last_login_at = now();
+        $user->last_login_device = $this->getUserDevice($request);
+        $user->save();
+
+        return $this->authenticated($request, $this->guard()->user())
+            ?: redirect()->intended($this->redirectPath());
+    }
+
+    /**
+     * Get the user's device information from the request
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return string
+     */
+    protected function getUserDevice(Request $request)
+    {
+        $agent = $request->header('User-Agent');
+        $device = 'Unknown';
+
+        if (preg_match('/(android|bb\d+|meego).+mobile|avantgo|bada\/|blackberry|blazer|compal|elaine|fennec|hiptop|iemobile|ip(hone|od)|iris|kindle|lge |maemo|midp|mmp|mobile.+firefox|netfront|opera m(ob|in)i|palm( os)?|phone|p(ixi|re)\/|plucker|pocket|psp|series(4|6)0|symbian|treo|up\.(browser|link)|vodafone|wap|windows ce|xda|xiino/i', $agent)) {
+            $device = 'Mobile';
+        } elseif (preg_match('/android|ipad|playbook|silk/i', $agent)) {
+            $device = 'Tablet';
+        } elseif (preg_match('/macintosh|mac os x/i', $agent)) {
+            $device = 'macOS';
+        } elseif (preg_match('/windows|win32/i', $agent)) {
+            $device = 'Windows';
+        } elseif (preg_match('/linux/i', $agent)) {
+            $device = 'Linux';
+        }
+
+        // Add browser info
+        if (preg_match('/chrome/i', $agent)) {
+            $device .= ' - Chrome';
+        } elseif (preg_match('/safari/i', $agent)) {
+            $device .= ' - Safari';
+        } elseif (preg_match('/firefox/i', $agent)) {
+            $device .= ' - Firefox';
+        } elseif (preg_match('/msie|trident/i', $agent)) {
+            $device .= ' - Internet Explorer';
+        } elseif (preg_match('/edge/i', $agent)) {
+            $device .= ' - Edge';
+        }
+
+        return $device;
     }
 }
