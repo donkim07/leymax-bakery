@@ -42,8 +42,24 @@
    */
   if (select('.toggle-sidebar-btn')) {
     on('click', '.toggle-sidebar-btn', function(e) {
-      select('body').classList.toggle('toggle-sidebar')
-    })
+      e.preventDefault();
+      select('body').classList.toggle('toggle-sidebar');
+      
+      // Save sidebar state to localStorage for persistence
+      const sidebarCollapsed = select('body').classList.contains('toggle-sidebar');
+      localStorage.setItem('sidebar-collapsed', sidebarCollapsed);
+      
+      // Trigger window resize to ensure charts resize properly
+      window.dispatchEvent(new Event('resize'));
+    });
+    
+    // Apply saved sidebar state on page load
+    document.addEventListener('DOMContentLoaded', function() {
+      const sidebarCollapsed = localStorage.getItem('sidebar-collapsed') === 'true';
+      if (sidebarCollapsed) {
+        select('body').classList.add('toggle-sidebar');
+      }
+    });
   }
 
   /**

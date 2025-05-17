@@ -632,6 +632,44 @@ h6 {
 @media (max-width: 1199px) {
   .sidebar {
     left: -300px;
+    z-index: 1001;
+    transition: all 0.3s;
+  }
+
+  .sidebar.active {
+    left: 0;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+  }
+
+  .sidebar-nav .nav-link {
+    padding: 12px 15px;
+  }
+
+  .sidebar-nav .nav-link, 
+  .sidebar-nav .nav-content a {
+    position: relative;
+    z-index: 5;
+  }
+
+  .sidebar-nav .nav-link::after,
+  .sidebar-nav .nav-content a::after {
+    content: '';
+    position: absolute;
+    top: -5px;
+    left: -5px;
+    right: -5px;
+    bottom: -5px;
+    z-index: -1;
+  }
+
+  body.toggle-sidebar .sidebar-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 1000;
   }
 }
 
