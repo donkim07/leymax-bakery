@@ -11,8 +11,9 @@ class ProfileController extends Controller
 {
     public function show()
     {
-        $user = auth()->user();
-        return view('profile.show', compact('user'));
+        return view('profile.show', [
+            'user' => auth()->user()
+        ]);
     }
 
     public function update(Request $request)
@@ -21,7 +22,7 @@ class ProfileController extends Controller
 
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users')->ignore($user->id)],
+            'email' => ['required', 'email', 'max:255', Rule::unique('users')->ignore($user->id)],
             'phone' => ['nullable', 'string', 'max:20'],
             'address' => ['nullable', 'string', 'max:255'],
             'city' => ['nullable', 'string', 'max:100'],
@@ -32,17 +33,13 @@ class ProfileController extends Controller
 
         $user->update($validated);
 
-        return redirect()->route('profile')->with('success', 'Profile updated successfully');
+        return back()->with('status', 'Profile updated successfully.');
     }
 
     public function updatePassword(Request $request)
     {
         $validated = $request->validate([
-            'current_password' => ['required', 'string', function ($attribute, $value, $fail) {
-                if (!Hash::check($value, auth()->user()->password)) {
-                    $fail('The current password is incorrect.');
-                }
-            }],
+            'current_password' => ['required', 'current_password'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
         ]);
 
@@ -50,7 +47,7 @@ class ProfileController extends Controller
             'password' => Hash::make($validated['password']),
         ]);
 
-        return redirect()->route('profile')->with('success', 'Password updated successfully');
+        return back()->with('status', 'Password updated successfully.');
     }
 
     public function updateAvatar(Request $request)
