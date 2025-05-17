@@ -3,6 +3,7 @@
 namespace App\Http;
 
 use Illuminate\Foundation\Http\Kernel as HttpKernel;
+use App\Http\Middleware\ValidateBusinessType;
 
 class Kernel extends HttpKernel
 {
@@ -34,6 +35,7 @@ class Kernel extends HttpKernel
             \Illuminate\View\Middleware\ShareErrorsFromSession::class,
             \App\Http\Middleware\VerifyCsrfToken::class,
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
+            \App\Http\Middleware\SetLanguage::class,
         ],
 
         'api' => [
@@ -61,5 +63,6 @@ class Kernel extends HttpKernel
         'throttle' => \Illuminate\Routing\Middleware\ThrottleRequests::class,
         'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
         'business.access' => \App\Http\Middleware\ValidateBusinessAccess::class,
+        'business_type' => \App\Http\Middleware\ValidateBusinessType::class,
     ];
 } 
