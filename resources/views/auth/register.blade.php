@@ -98,6 +98,18 @@
                     </div>
 
                     <div class="col-md-6">
+                        <label for="company_name" class="form-label">Company Name</label>
+                      <div class="input-group has-validation">
+                        <span class="input-group-text"><i class="bi bi-building"></i></span>
+                        <input type="text" name="company_name" class="form-control @error('company_name') is-invalid @enderror" 
+                               id="company_name" value="{{ old('company_name') }}" required>
+                        @error('company_name')
+                            <div class="invalid-feedback">{{ $message }}</div>
+                        @enderror
+                      </div>
+                    </div>
+
+                    <div class="col-md-6">
                         <label for="phone" class="form-label">Phone Number</label>
                       <div class="input-group has-validation">
                         <span class="input-group-text"><i class="bi bi-phone"></i></span>
