@@ -1,0 +1,320 @@
+/**
+* Custom Authentication Styles for Leymax Bakery
+*/
+
+:root {
+  --primary: #4154f1;
+  --primary-light: #717ff5;
+  --primary-dark: #012970;
+  --secondary: #798eb3;
+  --success: #2dce89;
+  --info: #11cdef;
+  --warning: #fb6340;
+  --danger: #f5365c;
+  --light: #f6f9ff;
+  --dark: #444444;
+  --body-bg: #f6f9ff;
+  --card-bg: #ffffff;
+  --text-main: #444444;
+  --text-muted: #6c757d;
+  --border-color: #ebeef4;
+  --font-main: "Open Sans", sans-serif;
+  --font-heading: "Nunito", sans-serif;
+}
+
+/* General Styles */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-main);
+  background: var(--body-bg);
+  color: var(--text-main);
+  min-height: 100vh;
+}
+
+.auth-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.auth-wrapper {
+  width: 100%;
+  max-width: 400px;
+}
+
+/* Logo Section */
+.auth-logo {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.auth-logo img {
+  max-height: 48px;
+  margin-bottom: 1rem;
+}
+
+.auth-logo span {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--primary-dark);
+  font-family: var(--font-heading);
+}
+
+/* Card Styles */
+.auth-card {
+  background: var(--card-bg);
+  border-radius: 8px;
+  box-shadow: 0 0 30px rgba(1, 41, 112, 0.1);
+  padding: 2rem;
+  margin-bottom: 1.5rem;
+}
+
+.auth-card-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.auth-card-header h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--primary-dark);
+  margin-bottom: 0.5rem;
+  font-family: var(--font-heading);
+}
+
+.auth-card-header p {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+/* Form Elements */
+.form-group {
+  margin-bottom: 1.5rem;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--text-main);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--text-main);
+  background-color: var(--card-bg);
+  background-clip: padding-box;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.form-control:focus {
+  border-color: var(--primary-light);
+  outline: 0;
+  box-shadow: 0 0 0 0.2rem rgba(65, 84, 241, 0.25);
+}
+
+.input-group {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+}
+
+.input-group .form-control {
+  position: relative;
+  flex: 1 1 auto;
+  width: 1%;
+  min-width: 0;
+}
+
+.input-group-text {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  text-align: center;
+  background-color: var(--light);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+}
+
+.input-group > :not(:first-child) {
+  margin-left: -1px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.input-group > :not(:last-child) {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/* Checkbox */
+.form-check {
+  display: flex;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.form-check-input {
+  width: 1rem;
+  height: 1rem;
+  margin-right: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+}
+
+.form-check-label {
+  font-size: 0.9rem;
+  color: var(--text-main);
+}
+
+/* Buttons */
+.btn {
+  display: inline-block;
+  font-weight: 600;
+  text-align: center;
+  vertical-align: middle;
+  cursor: pointer;
+  padding: 0.75rem 1.5rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  border-radius: 4px;
+  transition: all 0.15s ease-in-out;
+  border: none;
+  width: 100%;
+}
+
+.btn-primary {
+  color: #fff;
+  background-color: var(--primary);
+}
+
+.btn-primary:hover {
+  background-color: var(--primary-light);
+}
+
+/* Links */
+.auth-links {
+  text-align: center;
+  font-size: 0.9rem;
+}
+
+.auth-links a {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.auth-links a:hover {
+  color: var(--primary-light);
+}
+
+/* Error Messages */
+.invalid-feedback {
+  display: none;
+  width: 100%;
+  margin-top: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--danger);
+}
+
+.is-invalid .form-control {
+  border-color: var(--danger);
+}
+
+.is-invalid .invalid-feedback {
+  display: block;
+}
+
+/* Alert Messages */
+.alert {
+  position: relative;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid transparent;
+  border-radius: 4px;
+}
+
+.alert-danger {
+  color: #721c24;
+  background-color: #f8d7da;
+  border-color: #f5c6cb;
+}
+
+.alert-success {
+  color: #155724;
+  background-color: #d4edda;
+  border-color: #c3e6cb;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 576px) {
+  .auth-wrapper {
+    padding: 1rem;
+  }
+  
+  .auth-card {
+    padding: 1.5rem;
+  }
+}
+
+/* Business Options */
+.business-options {
+    margin-top: 0.5rem;
+}
+
+.business-options .form-check {
+    padding: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    margin-bottom: 1rem;
+    transition: all 0.15s ease-in-out;
+}
+
+.business-options .form-check:hover {
+    border-color: var(--primary-light);
+    background-color: rgba(65, 84, 241, 0.05);
+}
+
+.business-options .form-check-label {
+    display: flex;
+    flex-direction: column;
+    padding-left: 0.5rem;
+}
+
+.business-options .form-check-label strong {
+    color: var(--primary-dark);
+    font-size: 1rem;
+    margin-bottom: 0.25rem;
+}
+
+.business-options .form-check-label span {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+}
+
+.business-options .form-check-input:checked + .form-check-label strong {
+    color: var(--primary);
+}
+
+.business-options .form-check-input:checked + .form-check-label span {
+    color: var(--primary-dark);
+} 

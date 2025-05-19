@@ -333,4 +333,32 @@
     }, 200);
   }
 
+  /**
+   * Global toast notification function
+   * @param {string} type - success, error, or warning
+   * @param {string} message - The message to display
+   * @param {number} duration - Display duration in milliseconds (default 3000)
+   */
+  function showToast(type, message, duration = 3000) {
+    const toast = new bootstrap.Toast(document.getElementById('mainToast'), {
+      autohide: true,
+      delay: duration
+    });
+    const toastEl = document.getElementById('mainToast');
+    const msgEl = document.getElementById('mainToastMessage');
+    
+    if (msgEl) msgEl.textContent = message;
+    
+    toastEl.classList.remove('bg-success', 'bg-danger', 'bg-warning');
+    if (type === 'error') {
+      toastEl.classList.add('bg-danger');
+    } else if (type === 'warning') {
+      toastEl.classList.add('bg-warning');
+    } else {
+      toastEl.classList.add('bg-success');
+    }
+    
+    toast.show();
+  }
+
 })();
