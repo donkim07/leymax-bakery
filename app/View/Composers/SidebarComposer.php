@@ -59,8 +59,8 @@ class SidebarComposer
                     'items' => [
                         ['title' => 'Sales Orders', 'route' => 'bakery.sales.orders', 'icon' => 'shopping-bag'],
                         ['title' => 'Cash Sales (POS)', 'route' => 'bakery.sales.pos', 'icon' => 'banknotes'],
-                        ['title' => 'Invoices', 'route' => 'bakery.invoices', 'icon' => 'document-text'],
-                        ['title' => 'Paid Invoices', 'route' => 'bakery.invoices.paid', 'icon' => 'check-circle'],
+                        ['title' => 'Invoices', 'route' => 'bakery.sales.invoices', 'icon' => 'document-text'],
+                        ['title' => 'Paid Invoices', 'route' => 'bakery.sales.invoices.paid', 'icon' => 'check-circle'],
                         ['title' => 'Delivery & Fulfillment', 'route' => 'bakery.delivery', 'icon' => 'truck'],
                         ['title' => 'Returns & Refunds', 'route' => 'bakery.returns', 'icon' => 'arrow-path'],
                     ],
