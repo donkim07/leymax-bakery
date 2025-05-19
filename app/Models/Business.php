@@ -13,6 +13,7 @@ class Business extends Model
     protected $fillable = [
         'name',
         'type',
+        'company_id',
         'registration_number',
         'tax_number',
         'email',
@@ -33,6 +34,11 @@ class Business extends Model
     ];
 
     // Relationships
+    public function company()
+    {
+        return $this->belongsTo(Company::class);
+    }
+    
     public function stores()
     {
         return $this->hasMany(Store::class);
@@ -63,6 +69,21 @@ class Business extends Model
         return $this->belongsToMany(User::class, 'business_user')
             ->withPivot('role')
             ->withTimestamps();
+    }
+
+    public function assemblyCategories()
+    {
+        return $this->hasMany(AssemblyCategory::class);
+    }
+
+    public function assemblyGroups()
+    {
+        return $this->hasMany(AssemblyGroup::class);
+    }
+
+    public function assemblySizes()
+    {
+        return $this->hasMany(AssemblySize::class);
     }
 
     // Scopes

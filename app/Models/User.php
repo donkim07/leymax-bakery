@@ -89,6 +89,14 @@ class User extends Authenticatable implements MustVerifyEmail
             ->withTimestamps();
     }
 
+    /**
+     * Get the company owned by the user.
+     */
+    public function company()
+    {
+        return $this->hasOne(Company::class, 'owner_id');
+    }
+
     public function hasAccessToBusiness(string $business): bool
     {
         return in_array($business, $this->enabled_businesses ?? []);
