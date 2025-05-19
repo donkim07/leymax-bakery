@@ -5,12 +5,14 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\Business;
+use App\Models\Company;
 use App\Providers\RouteServiceProvider;
 use Illuminate\Foundation\Auth\RegistersUsers;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Spatie\Permission\Models\Role;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
 
 class RegisterController extends Controller
 {
@@ -66,6 +68,7 @@ class RegisterController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
             'username' => ['required', 'string', 'max:255', 'unique:users', 'alpha_dash'],
+            'company_name' => ['required', 'string', 'max:255'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
             'businesses' => ['required', 'array', 'min:1', 'in:bakery,cake_tools,academy'],
             'terms' => ['required', 'accepted'],
@@ -80,6 +83,9 @@ class RegisterController extends Controller
      */
     protected function create(array $data)
     {
+        DB::beginTransaction();
+        
+        try {
         // Create the user
         $user = User::create([
             'name' => $data['name'],
@@ -95,6 +101,16 @@ class RegisterController extends Controller
         
         // Assign role to user
         $user->assignRole($userRole);
+            
+            // Create company
+            $company = Company::create([
+                'name' => $data['company_name'] ?? ($data['name'] . "'s Company"),
+                'email' => $data['email'],
+                'owner_id' => $user->id,
+                'payment_status' => 'paid',
+                'license_expiry' => now()->addYears(50),
+                'is_active' => true,
+            ]);
 
         // Create or attach businesses
         foreach ($data['businesses'] as $businessType) {
@@ -106,6 +122,7 @@ class RegisterController extends Controller
                 'name' => $data['name'] . "'s " . ucfirst($businessType),
                 'type' => $businessType,
                 'email' => $businessEmail,
+                    'company_id' => $company->id,
             ]);
 
             // Create a main store for the business
@@ -120,7 +137,12 @@ class RegisterController extends Controller
             $user->businesses()->attach($business->id, ['role' => 'owner']);
         }
 
+            DB::commit();
         return $user;
+        } catch (\Exception $e) {
+            DB::rollBack();
+            throw $e;
+        }
     }
 
     protected function generateUniqueBusinessEmail($userEmail, $businessType)
