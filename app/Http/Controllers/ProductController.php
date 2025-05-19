@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Product;
 use App\Models\Business;
+use App\Models\Category;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
@@ -221,5 +222,248 @@ class ProductController extends Controller
         $product->update($validator->validated());
 
         return $this->successResponse($product, 'Product prices updated successfully');
+    }
+
+    /**
+     * Display bakery items
+     */
+    public function bakeryItems()
+    {
+        $businessId = session('business_id');
+        $products = Product::where('business_id', $businessId)
+            ->where('type', config('constants.product_types.bakery'))
+            ->with('category')
+            ->paginate(20);
+        
+        $categories = Category::where('business_id', $businessId)
+            ->where('slug', 'like', 'bakery-%')
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get();
+        
+        return view('bakery.items', compact('products', 'categories'));
+    }
+
+    /**
+     * Display bakery categories
+     */
+    public function bakeryCategories()
+    {
+        return view('bakery.products.categories');
+    }
+
+    /**
+     * Display tools items
+     */
+    public function toolsItems()
+    {
+        return view('tools.products.items');
+    }
+
+    /**
+     * Display tools categories
+     */
+    public function toolsCategories()
+    {
+        return view('tools.products.categories');
+    }
+
+    /**
+     * AJAX: Check if product name is unique
+     */
+    public function checkNameUnique(Request $request)
+    {
+        $name = $request->input('name');
+        $id = $request->input('id');
+        $businessId = session('business_id');
+        $query = Product::where('business_id', $businessId)
+            ->where('name', $name);
+        if ($id) {
+            $query->where('id', '!=', $id);
+        }
+        $exists = $query->exists();
+        return response()->json(['unique' => !$exists]);
+    }
+
+    /**
+     * Store a new bakery item
+     */
+    public function storeBakeryItem(Request $request)
+    {
+        $businessId = session('business_id');
+        
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'category_id' => 'nullable|exists:categories,id',
+            'cost_price' => 'required|numeric|min:0',
+            'selling_price' => 'required|numeric|min:0',
+            'unit' => 'required|string|max:50',
+            'sku' => 'nullable|string|max:100',
+            'barcode' => 'nullable|string|max:100',
+            'description' => 'nullable|string',
+            'image' => 'nullable|image|max:2048',
+            'is_featured' => 'nullable|boolean',
+            'is_active' => 'nullable|boolean',
+            'track_inventory' => 'nullable|boolean',
+        ]);
+        
+        $validated['business_id'] = $businessId;
+        $validated['type'] = config('constants.product_types.bakery');
+        $validated['is_featured'] = $request->has('is_featured');
+        $validated['is_active'] = $request->has('is_active');
+        $validated['track_inventory'] = $request->has('track_inventory');
+        
+        // Handle image upload
+        if ($request->hasFile('image')) {
+            $image = $request->file('image');
+            $imageName = time() . '_' . $image->getClientOriginalName();
+            $image->storeAs('public/products', $imageName);
+            $validated['image'] = 'products/' . $imageName;
+        }
+        
+        $product = Product::create($validated);
+        
+        // Create initial stock entry if needed
+        if ($product && $request->filled('initial_stock')) {
+            // Handle initial stock logic here
+        }
+        
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Item created successfully',
+                'product' => $product
+            ]);
+        }
+        
+        return redirect()->route('bakery.items')
+            ->with('success', 'Item created successfully');
+    }
+
+    /**
+     * Update a bakery item
+     */
+    public function updateBakeryItem(Request $request, Product $product)
+    {
+        // Check if this product belongs to the current business
+        if ($product->business_id != session('business_id')) {
+            return redirect()->route('bakery.items')
+                ->with('error', 'You do not have permission to edit this item');
+        }
+        
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'category_id' => 'nullable|exists:categories,id',
+            'cost_price' => 'required|numeric|min:0',
+            'selling_price' => 'required|numeric|min:0',
+            'unit' => 'required|string|max:50',
+            'sku' => 'nullable|string|max:100',
+            'barcode' => 'nullable|string|max:100',
+            'description' => 'nullable|string',
+            'image' => 'nullable|image|max:2048',
+            'is_featured' => 'nullable|boolean',
+            'is_active' => 'nullable|boolean',
+            'track_inventory' => 'nullable|boolean',
+        ]);
+        
+        $validated['is_featured'] = $request->has('is_featured');
+        $validated['is_active'] = $request->has('is_active');
+        $validated['track_inventory'] = $request->has('track_inventory');
+        
+        // Handle image upload
+        if ($request->hasFile('image')) {
+            // Delete old image if exists
+            if ($product->image) {
+                Storage::delete('public/' . $product->image);
+            }
+            
+            $image = $request->file('image');
+            $imageName = time() . '_' . $image->getClientOriginalName();
+            $image->storeAs('public/products', $imageName);
+            $validated['image'] = 'products/' . $imageName;
+        }
+        
+        $product->update($validated);
+        
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Item updated successfully',
+                'product' => $product
+            ]);
+        }
+        
+        return redirect()->route('bakery.items')
+            ->with('success', 'Item updated successfully');
+    }
+
+    /**
+     * Delete a bakery item
+     */
+    public function destroyBakeryItem(Product $product)
+    {
+        // Check if this product belongs to the current business
+        if ($product->business_id != session('business_id')) {
+            return redirect()->route('bakery.items')
+                ->with('error', 'You do not have permission to delete this item');
+        }
+        
+        // Check if the product is being used in any assembly or process
+        $isInUse = false; // Implement logic to check if the product is in use
+        
+        if ($isInUse) {
+            return redirect()->route('bakery.items')
+                ->with('error', 'This item cannot be deleted as it is being used in assemblies or processes');
+        }
+        
+        // Delete the product image if it exists
+        if ($product->image) {
+            Storage::delete('public/' . $product->image);
+        }
+        
+        $product->delete();
+        
+        return redirect()->route('bakery.items')
+            ->with('success', 'Item deleted successfully');
+    }
+
+    /**
+     * Store a new product category via AJAX
+     */
+    public function storeCategory(Request $request)
+    {
+        $businessId = session('business_id');
+        
+        $validated = $request->validate([
+            'name' => 'required|string|max:255'
+        ]);
+        
+        // Check for duplicate name
+        $exists = Category::where('business_id', $businessId)
+            ->where('name', $validated['name'])
+            ->exists();
+        
+        if ($exists) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A category with this name already exists'
+            ], 422);
+        }
+        
+        // Create the new category
+        $category = new Category([
+            'business_id' => $businessId,
+            'name' => $validated['name'],
+            'slug' => 'bakery-' . $businessId . '-' . \Illuminate\Support\Str::slug($validated['name']),
+            'is_active' => true
+        ]);
+        
+        $category->save();
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Category created successfully',
+            'category' => $category
+        ]);
     }
 } 

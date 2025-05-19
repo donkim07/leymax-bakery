@@ -168,8 +168,7 @@ class ReportController extends Controller
      */
     public function bakery()
     {
-        // Bakery specific reporting
-        return view('reports.bakery');
+        return view('bakery.reports.index');
     }
     
     /**
@@ -179,8 +178,7 @@ class ReportController extends Controller
      */
     public function tools()
     {
-        // Tools specific reporting
-        return view('reports.tools');
+        return view('tools.reports.index');
     }
     
     /**
@@ -190,8 +188,7 @@ class ReportController extends Controller
      */
     public function academy()
     {
-        // Academy specific reporting
-        return view('reports.academy');
+        return view('academy.reports.index');
     }
 
     /**
@@ -201,7 +198,7 @@ class ReportController extends Controller
      */
     public function globalSales()
     {
-        return $this->sales();
+        return view('reports.sales');
     }
 
     /**
@@ -211,7 +208,7 @@ class ReportController extends Controller
      */
     public function globalInventory()
     {
-        return $this->inventory();
+        return view('reports.inventory');
     }
 
     /**
@@ -221,6 +218,6 @@ class ReportController extends Controller
      */
     public function globalFinancial()
     {
-        return $this->financial();
+        return view('reports.financial');
     }
 } 

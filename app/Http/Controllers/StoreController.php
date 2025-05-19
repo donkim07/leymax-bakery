@@ -166,4 +166,52 @@ class StoreController extends Controller
 
         return $this->paginatedResponse($inventory);
     }
+
+    /**
+     * Display bakery main store
+     */
+    public function bakeryMain()
+    {
+        return view('bakery.stores.main');
+    }
+
+    /**
+     * Display bakery sub stores
+     */
+    public function bakerySub()
+    {
+        return view('bakery.stores.sub');
+    }
+
+    /**
+     * Display bakery store map
+     */
+    public function bakeryMap()
+    {
+        return view('bakery.stores.map');
+    }
+
+    /**
+     * Display tools main store
+     */
+    public function toolsMain()
+    {
+        return view('tools.stores.main');
+    }
+
+    /**
+     * Display tools sub stores
+     */
+    public function toolsSub()
+    {
+        return view('tools.stores.sub');
+    }
+
+    /**
+     * Display tools store map
+     */
+    public function toolsMap()
+    {
+        return view('tools.stores.map');
+    }
 } 

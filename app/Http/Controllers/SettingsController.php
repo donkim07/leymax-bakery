@@ -14,6 +14,8 @@ use Illuminate\Support\Facades\Auth;
 use Spatie\Backup\BackupDestination\Backup;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Mail;
+use App\Models\Company;
+use Illuminate\Support\Facades\Log;
 
 class SettingsController extends Controller
 {
@@ -37,15 +39,16 @@ class SettingsController extends Controller
     public function updateGeneral(Request $request)
     {
         $validated = $request->validate([
-            'app_name' => 'required|string|max:255',
-            'app_logo' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
             'company_name' => 'required|string|max:255',
+            'app_logo' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
             'company_address' => 'required|string',
             'company_phone' => 'required|string|max:20',
             'company_email' => 'required|email',
             'default_currency' => 'required|string|size:3',
             'default_language' => 'required|string|size:2',
             'tax_rate' => 'required|numeric|min:0|max:100',
+            'registration_number' => 'nullable|string|max:100',
+            'tax_number' => 'nullable|string|max:100',
         ]);
 
         foreach ($validated as $key => $value) {
@@ -60,9 +63,9 @@ class SettingsController extends Controller
             );
         }
 
-        // Update .env file with app name to make it visible in UI
-        if (isset($validated['app_name'])) {
-            $this->updateEnvFile('APP_NAME', $validated['app_name']);
+        // Update .env file with company name
+        if (isset($validated['company_name'])) {
+            $this->updateEnvFile('APP_NAME', $validated['company_name']);
         }
 
         return redirect()->route('settings.general')->with('success', 'General settings updated successfully!');
@@ -506,7 +509,97 @@ class SettingsController extends Controller
      */
     public function bakeryCompany()
     {
-        return view('bakery.settings.company');
+        $company = \App\Models\Company::find(session('company_id'));
+        return view('bakery.settings.company', compact('company'));
+    }
+    
+    /**
+     * Update company information for bakery
+     */
+    public function updateBakeryCompany(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'address' => 'nullable|string',
+            'phone' => 'nullable|string|max:20',
+            'email' => 'nullable|email|max:255',
+            'website' => 'nullable|url|max:255',
+            'registration_number' => 'nullable|string|max:50',
+            'tax_number' => 'nullable|string|max:50',
+            'logo' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+        ]);
+        
+        // Debug session data
+        Log::debug('Company ID in session: ' . session('company_id'));
+        Log::debug('User: ' . auth()->id());
+        
+        // Try to find company by session company_id OR by the authenticated user's ownership
+        $company = null;
+        
+        if (session('company_id')) {
+            $company = Company::find(session('company_id'));
+            Log::debug('Found company by session: ' . ($company ? 'Yes' : 'No'));
+        }
+        
+        // If not found by session, try to find by user ownership
+        if (!$company && auth()->check()) {
+            $company = Company::where('owner_id', auth()->id())->first();
+            Log::debug('Found company by owner: ' . ($company ? 'Yes' : 'No'));
+            
+            // If found, update the session
+            if ($company) {
+                session(['company_id' => $company->id]);
+                session(['company_name' => $company->name]);
+            }
+        }
+        
+        if (!$company) {
+            return redirect()->back()->with('error', 'Company not found. Please contact support.');
+        }
+        
+        try {
+            DB::beginTransaction();
+            
+            Log::debug('Updating company #' . $company->id . ' with name: ' . $validated['name']);
+            
+            $company->name = $validated['name'];
+            $company->address = $validated['address'] ?? $company->address;
+            $company->phone = $validated['phone'] ?? $company->phone;
+            $company->email = $validated['email'] ?? $company->email;
+            $company->website = $validated['website'] ?? $company->website;
+            $company->registration_number = $validated['registration_number'] ?? $company->registration_number;
+            $company->tax_number = $validated['tax_number'] ?? $company->tax_number;
+            
+            if ($request->hasFile('logo')) {
+                $path = $request->file('logo')->store('company_logos', 'public');
+                $company->logo = asset('storage/' . $path);
+            }
+            
+            $company->save();
+            
+            Log::debug('Company saved successfully');
+            
+            // Update the company name in the session
+            session(['company_name' => $company->name]);
+            
+            // Also update settings table (if you're storing company info there too)
+            Setting::updateOrCreate(
+                ['key' => 'company_name', 'group' => 'general'],
+                ['value' => $validated['name']]
+            );
+            
+            DB::commit();
+            
+            return redirect()->route('bakery.settings.company')
+                ->with('success', 'Company information updated successfully.');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Failed to update company: ' . $e->getMessage());
+            
+            return redirect()->back()
+                ->with('error', 'Failed to update company information: ' . $e->getMessage())
+                ->withInput();
+        }
     }
 
     public function bakeryBranches()
@@ -582,5 +675,74 @@ class SettingsController extends Controller
     public function academyLocalization()
     {
         return view('academy.settings.localization');
+    }
+
+    /**
+     * Process payment for license
+     * 
+     * @param Request $request
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function processPayment(Request $request)
+    {
+        $validated = $request->validate([
+            'payment_plan' => 'required|string|in:monthly,yearly,lifetime',
+            'payment_method' => 'required|string|in:credit_card,paypal,bank_transfer,mpesa',
+            'card_number' => 'required_if:payment_method,credit_card|nullable|string',
+            'card_name' => 'required_if:payment_method,credit_card|nullable|string',
+            'expiry_month' => 'required_if:payment_method,credit_card|nullable|string|size:2',
+            'expiry_year' => 'required_if:payment_method,credit_card|nullable|string|size:4',
+            'cvv' => 'required_if:payment_method,credit_card|nullable|string|max:4',
+            'phone_number' => 'required_if:payment_method,mpesa|nullable|string',
+        ]);
+        
+        // Calculate license expiry based on plan
+        $now = now();
+        $expiryDate = null;
+        $paymentStatus = 'pending';
+        
+        switch ($validated['payment_plan']) {
+            case 'monthly':
+                $expiryDate = $now->addMonth();
+                break;
+            case 'yearly':
+                $expiryDate = $now->addYear();
+                break;
+            case 'lifetime':
+                $expiryDate = $now->addYears(50); // Effectively lifetime
+                break;
+        }
+        
+        // Process payment based on method (in a real app, you'd integrate with payment processors here)
+        // For demonstration, we'll just simulate a successful payment
+        if ($validated['payment_method'] == 'bank_transfer') {
+            $paymentStatus = 'pending'; // Bank transfers need verification
+            $message = 'Your payment request has been received. Your license will be activated once payment is confirmed.';
+        } else {
+            $paymentStatus = 'paid';
+            $message = 'Your payment has been processed successfully. Your license is now active.';
+        }
+        
+        // Update license settings
+        Setting::updateOrCreate(
+            ['key' => 'payment_status', 'group' => 'general'],
+            ['value' => $paymentStatus]
+        );
+        
+        Setting::updateOrCreate(
+            ['key' => 'license_expiry', 'group' => 'general'],
+            ['value' => $expiryDate->format('Y-m-d')]
+        );
+        
+        // Find the company linked to the current user and update its payment status
+        $company = Auth::user()->company;
+        if ($company) {
+            $company->update([
+                'payment_status' => $paymentStatus,
+                'license_expiry' => $expiryDate
+            ]);
+        }
+        
+        return redirect()->route('settings.general')->with('success', $message);
     }
 } 
