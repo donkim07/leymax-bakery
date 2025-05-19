@@ -36,6 +36,8 @@ class Kernel extends HttpKernel
             \App\Http\Middleware\VerifyCsrfToken::class,
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
             \App\Http\Middleware\SetLanguage::class,
+            \App\Http\Middleware\SetCompanyIdInSession::class,
+            \App\Http\Middleware\EnsureBusinessIdExists::class,
         ],
 
         'api' => [
@@ -64,5 +66,6 @@ class Kernel extends HttpKernel
         'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
         'business.access' => \App\Http\Middleware\ValidateBusinessAccess::class,
         'business_type' => \App\Http\Middleware\ValidateBusinessType::class,
+        'ensure.business' => \App\Http\Middleware\EnsureBusinessIdExists::class,
     ];
 } 
