@@ -19,7 +19,12 @@ use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\CourseController;
 use App\Http\Controllers\StudentController;
 use App\Http\Controllers\ThemeController;
+use App\Http\Controllers\InvoiceController;
+use App\Http\Controllers\BillController;
+use App\Http\Controllers\CreditController;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Auth;
+use App\Http\Controllers\Api\BusinessDataController;
 
 // Public routes
 Route::get('/', function () {
@@ -67,8 +72,9 @@ Route::middleware('auth')->group(function () {
     Route::prefix('settings')->name('settings.')->group(function () {
         // General Settings
         Route::get('/general', [SettingsController::class, 'general'])->name('general');
-        Route::post('/general', [SettingsController::class, 'updateGeneral'])->name('general.update');
+        Route::post('/general/update', [SettingsController::class, 'updateGeneral'])->name('general.update');
         Route::post('/currency/add', [SettingsController::class, 'addCurrency'])->name('currency.add');
+        Route::post('/payment/process', [SettingsController::class, 'processPayment'])->name('payment.process');
         
         // User Management
         Route::get('/users', [SettingsController::class, 'users'])->name('users');
@@ -178,16 +184,54 @@ Route::middleware('auth')->group(function () {
         
         // Manufacturing Routes
         Route::get('/manufacturing/assembly', [App\Http\Controllers\ManufacturingController::class, 'assembly'])->name('manufacturing.assembly');
+        Route::post('/manufacturing/assembly', [App\Http\Controllers\ManufacturingController::class, 'storeAssembledItem'])->name('manufacturing.assembly.store');
+        Route::put('/manufacturing/assembly/{assembledItem}', [App\Http\Controllers\ManufacturingController::class, 'updateAssembledItem'])->name('manufacturing.assembly.update');
+        Route::delete('/manufacturing/assembly/{assembledItem}', [App\Http\Controllers\ManufacturingController::class, 'destroyAssembledItem'])->name('manufacturing.assembly.destroy');
+        
+        // New routes for AJAX creation of categories, groups, and sizes
+        Route::post('/manufacturing/assembly/category', [App\Http\Controllers\ManufacturingController::class, 'storeCategory'])->name('manufacturing.assembly.category.store');
+        Route::post('/manufacturing/assembly/group', [App\Http\Controllers\ManufacturingController::class, 'storeGroup'])->name('manufacturing.assembly.group.store');
+        Route::post('/manufacturing/assembly/size', [App\Http\Controllers\ManufacturingController::class, 'storeSize'])->name('manufacturing.assembly.size.store');
+        
+        Route::post('/manufacturing/assembly/{assembledItem}/ingredients', [App\Http\Controllers\ManufacturingController::class, 'addIngredient'])->name('manufacturing.assembly.ingredients.add');
+        Route::delete('/manufacturing/assembly/ingredients/{ingredient}', [App\Http\Controllers\ManufacturingController::class, 'removeIngredient'])->name('manufacturing.assembly.ingredients.remove');
+        Route::post('/manufacturing/assembly/{assembledItem}/paste-divisions', [App\Http\Controllers\ManufacturingController::class, 'createPasteDivision'])->name('manufacturing.assembly.paste-divisions.create');
+        Route::delete('/manufacturing/assembly/paste-divisions/{pasteDivision}', [App\Http\Controllers\ManufacturingController::class, 'removePasteDivision'])->name('manufacturing.assembly.paste-divisions.remove');
+        Route::get('/manufacturing/assembly/{assembledItem}', [App\Http\Controllers\ManufacturingController::class, 'getAssembledItem'])->name('manufacturing.assembly.show');
+        Route::get('/manufacturing/assembly/{assembledItem}/ingredients', [App\Http\Controllers\ManufacturingController::class, 'getIngredients'])->name('manufacturing.assembly.ingredients');
+        Route::get('/manufacturing/assembly/{assembledItem}/paste-divisions', [App\Http\Controllers\ManufacturingController::class, 'getPasteDivisions'])->name('manufacturing.assembly.paste-divisions');
         Route::get('/manufacturing/process', [App\Http\Controllers\ManufacturingController::class, 'process'])->name('manufacturing.process');
+        Route::post('/manufacturing/process', [App\Http\Controllers\ManufacturingController::class, 'storeProcess'])->name('manufacturing.process.store');
+        Route::post('/manufacturing/process/{process}/complete', [App\Http\Controllers\ManufacturingController::class, 'completeProcess'])->name('manufacturing.process.complete');
+        Route::post('/manufacturing/process/complete-all', [App\Http\Controllers\ManufacturingController::class, 'completeAllProcesses'])->name('manufacturing.process.complete-all');
+        Route::put('/manufacturing/process/ingredient/{ingredient}', [App\Http\Controllers\ManufacturingController::class, 'updateProcessIngredient'])->name('manufacturing.process.ingredient.update');
+        Route::post('/manufacturing/process/{process}/waste', [App\Http\Controllers\ManufacturingController::class, 'recordWaste'])->name('manufacturing.process.waste');
         Route::get('/manufacturing/adjustment', [App\Http\Controllers\ManufacturingController::class, 'adjustment'])->name('manufacturing.adjustment');
         Route::get('/manufacturing/planning', [App\Http\Controllers\ManufacturingController::class, 'planning'])->name('manufacturing.planning');
         Route::get('/manufacturing/waste', [App\Http\Controllers\ManufacturingController::class, 'waste'])->name('manufacturing.waste');
         Route::get('/manufacturing/metrics', [App\Http\Controllers\ManufacturingController::class, 'metrics'])->name('manufacturing.metrics');
         
+        // API Routes for Manufacturing Processes
+        Route::prefix('api')->group(function () {
+            Route::get('/manufacturing-process/{process}/ingredients', [App\Http\Controllers\ManufacturingController::class, 'getProcessIngredients'])->name('api.manufacturing.process.ingredients');
+            Route::get('/manufacturing-process/{process}/wastes', [App\Http\Controllers\ManufacturingController::class, 'getProcessWastes'])->name('api.manufacturing.process.wastes');
+            Route::get('/user/business-id', function () {
+                return response()->json([
+                    'success' => true,
+                    'business_id' => session('business_id'),
+                    'user_id' => Auth::id(),
+                    'has_company' => Auth::user() && Auth::user()->company ? true : false,
+                    'company_id' => Auth::user() && Auth::user()->company ? Auth::user()->company->id : null,
+                ]);
+            })->name('api.user.business-id');
+        });
+        
         Route::get('/sales/orders', [OrderController::class, 'bakeryOrders'])->name('sales.orders');
         Route::get('/sales/pos', [OrderController::class, 'bakeryPos'])->name('sales.pos');
-        Route::get('/invoices', [OrderController::class, 'bakeryInvoices'])->name('invoices');
-        Route::get('/invoices/paid', [OrderController::class, 'bakeryPaidInvoices'])->name('invoices.paid');
+        Route::get('/sales/invoices', [InvoiceController::class, 'bakeryInvoices'])->name('sales.invoices');
+        Route::get('/sales/invoices/paid', [InvoiceController::class, 'bakeryPaidInvoices'])->name('sales.invoices.paid');
+        Route::get('/sales/invoices/unpaid', [InvoiceController::class, 'bakeryUnpaidInvoices'])->name('sales.invoices.unpaid');
+        Route::get('/sales/invoices/draft', [InvoiceController::class, 'bakeryDraftInvoices'])->name('sales.invoices.draft');
         Route::get('/delivery', [OrderController::class, 'bakeryDelivery'])->name('delivery');
         Route::get('/returns', [OrderController::class, 'bakeryReturns'])->name('returns');
         Route::get('/suppliers', [SupplierController::class, 'bakerySuppliers'])->name('suppliers');
@@ -206,6 +250,7 @@ Route::middleware('auth')->group(function () {
         // Settings Routes
         Route::prefix('settings')->name('settings.')->group(function () {
             Route::get('/company', [SettingsController::class, 'bakeryCompany'])->name('company');
+            Route::post('/company', [SettingsController::class, 'updateBakeryCompany'])->name('company.update');
             Route::get('/branches', [SettingsController::class, 'bakeryBranches'])->name('branches');
             Route::get('/users', [SettingsController::class, 'bakeryUsers'])->name('users');
             Route::get('/tax', [SettingsController::class, 'bakeryTax'])->name('tax');
@@ -216,13 +261,13 @@ Route::middleware('auth')->group(function () {
 
     // Bakery Financial Management Routes
     Route::prefix('bakery')->middleware(['auth', 'verified'])->group(function () {
-        Route::get('/invoices/{invoice}', 'InvoiceController@show')->name('bakery.invoices.show');
-        Route::get('/bills/{bill}', 'BillController@show')->name('bakery.bills.show');
-        Route::get('/credits/{credit}', 'CreditController@show')->name('bakery.credits.show');
+        Route::get('/invoices/{invoice}', [InvoiceController::class, 'show'])->name('bakery.sales.invoices.show');
+        Route::get('/bills/{bill}', [BillController::class, 'show'])->name('bakery.bills.show');
+        Route::get('/credits/{credit}', [CreditController::class, 'show'])->name('bakery.credits.show');
+        Route::post('/invoices/{invoice}/mark-paid', [InvoiceController::class, 'markAsPaid']);
     });
 
     Route::prefix('api/bakery')->middleware(['auth', 'verified'])->group(function () {
-        Route::post('/invoices/{invoice}/mark-paid', 'InvoiceController@markAsPaid');
         Route::post('/bills/{bill}/pay', 'BillController@pay');
         Route::post('/credits/{credit}/settle', 'CreditController@settle');
     });
@@ -329,3 +374,23 @@ Route::get('/profile', function () {
 Route::get('/home', function () {
     return redirect()->route('dashboard');
 })->name('home');
+
+// AJAX route for real-time uniqueness check
+Route::get('/api/check-assembled-item-name-unique', [App\Http\Controllers\ManufacturingController::class, 'checkNameUnique'])->name('api.check.assembled-item-name-unique');
+Route::get('/api/check-product-name-unique', [App\Http\Controllers\ProductController::class, 'checkNameUnique'])->name('api.check.product-name-unique');
+
+// Business data API endpoint for prefetching
+Route::get('/api/user/business-data', [BusinessDataController::class, 'index'])->name('api.business-data');
+
+// Bakery Inventory/Items View
+Route::get('/bakery/items', [ProductController::class, 'bakeryItems'])->name('bakery.items');
+Route::post('/bakery/items', [ProductController::class, 'storeBakeryItem'])->name('bakery.items.store');
+Route::put('/bakery/items/{product}', [ProductController::class, 'updateBakeryItem'])->name('bakery.items.update');
+Route::delete('/bakery/items/{product}', [ProductController::class, 'destroyBakeryItem'])->name('bakery.items.destroy');
+
+// Routes for bakery categories (for item management)
+Route::post('/bakery/categories', [ProductController::class, 'storeCategory'])->name('bakery.categories.store');
+
+// Paste Division API routes
+Route::get('/manufacturing/paste/{pasteProcess}/available', [App\Http\Controllers\ManufacturingController::class, 'getPasteAvailability'])->name('manufacturing.paste.available');
+Route::post('/manufacturing/paste/divide', [App\Http\Controllers\ManufacturingController::class, 'dividePaste'])->name('manufacturing.paste.divide');
