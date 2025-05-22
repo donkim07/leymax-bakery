@@ -315,111 +315,105 @@
 </div>
 
 <!-- Schedule Production Modal -->
-<div class="modal fade" id="scheduleProductionModal" tabindex="-1" aria-labelledby="scheduleProductionModalLabel" aria-hidden="true">
+<div class="modal fade" id="scheduleProductionModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="scheduleProductionModalLabel">Schedule Production</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <form class="row g-3">
-                    <div class="col-md-6">
-                        <label for="productSelect" class="form-label">Product</label>
-                        <select id="productSelect" class="form-select">
-                            <option selected disabled>Choose...</option>
-                            <option>Vanilla Cake Base</option>
-                            <option>Chocolate Cake Base</option>
-                            <option>Strawberry Frosting</option>
-                            <option>Whole Wheat Bread</option>
-                            <option>Blueberry Muffins</option>
-                            <option>Croissants</option>
-                        </select>
-                    </div>
-                    <div class="col-md-6">
-                        <label for="batchSize" class="form-label">Batch Size</label>
-                        <div class="input-group">
-                            <input type="number" class="form-control" id="batchSize" value="50">
-                            <span class="input-group-text">units</span>
+            <form id="scheduleProductionForm" action="{{ route('bakery.manufacturing.planning.store') }}" method="POST">
+                @csrf
+                <input type="hidden" name="business_id" value="{{ session('business_id') }}">
+                <input type="hidden" name="company_id" value="{{ session('company_id') }}">
+                
+                <div class="modal-header">
+                    <h5 class="modal-title">Schedule Production</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-8">
+                            <label for="assembled_item_id" class="form-label">Product</label>
+                            <select class="form-select searchable" id="assembled_item_id" name="assembled_item_id" required placeholder="Select product">
+                                <option value="">Select Product</option>
+                                @foreach($assembledItems ?? [] as $item)
+                                    <option value="{{ $item->id }}" data-unit="{{ $item->unit }}">{{ $item->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="priority" class="form-label">Priority</label>
+                            <select class="form-select" id="priority" name="priority" required>
+                                <option value="high">High</option>
+                                <option value="normal" selected>Normal</option>
+                                <option value="low">Low</option>
+                            </select>
                         </div>
                     </div>
-                    <div class="col-md-6">
-                        <label for="startDate" class="form-label">Start Date</label>
-                        <input type="date" class="form-control" id="startDate" value="{{ date('Y-m-d') }}">
-                    </div>
-                    <div class="col-md-6">
-                        <label for="startTime" class="form-label">Start Time</label>
-                        <input type="time" class="form-control" id="startTime" value="08:00">
-                    </div>
-                    <div class="col-md-6">
-                        <label for="estimatedDuration" class="form-label">Estimated Duration</label>
-                        <div class="input-group">
-                            <input type="number" class="form-control" id="estimatedDuration" value="120">
-                            <span class="input-group-text">minutes</span>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <label for="title" class="form-label">Title</label>
+                            <input type="text" class="form-control" id="title" name="title" required>
                         </div>
                     </div>
-                    <div class="col-md-6">
-                        <label for="assignedTo" class="form-label">Assigned To</label>
-                        <select id="assignedTo" class="form-select">
-                            <option selected disabled>Choose...</option>
-                            <option>John Baker</option>
-                            <option>Maria Pastry</option>
-                            <option>Alex Confection</option>
-                        </select>
-                    </div>
-                    <div class="col-md-6">
-                        <label for="priority" class="form-label">Priority</label>
-                        <select id="priority" class="form-select">
-                            <option>Low</option>
-                            <option selected>Normal</option>
-                            <option>High</option>
-                            <option>Urgent</option>
-                        </select>
-                    </div>
-                    <div class="col-md-6">
-                        <label for="resourceAllocation" class="form-label">Resource Allocation</label>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" value="" id="mixingStation1">
-                            <label class="form-check-label" for="mixingStation1">
-                                Mixing Station 1
-                            </label>
-                        </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" value="" id="mixingStation2">
-                            <label class="form-check-label" for="mixingStation2">
-                                Mixing Station 2
-                            </label>
-                        </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" value="" id="oven1">
-                            <label class="form-check-label" for="oven1">
-                                Oven 1
-                            </label>
-                        </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" value="" id="oven2">
-                            <label class="form-check-label" for="oven2">
-                                Oven 2
-                            </label>
-                        </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" value="" id="decorationStation">
-                            <label class="form-check-label" for="decorationStation">
-                                Decoration Station
-                            </label>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <label for="description" class="form-label">Description</label>
+                            <textarea class="form-control" id="description" name="description" rows="2"></textarea>
                         </div>
                     </div>
-                    <div class="col-12">
-                        <label for="notes" class="form-label">Notes</label>
-                        <textarea class="form-control" id="notes" rows="3" placeholder="Add any special instructions or notes here..."></textarea>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="scheduled_date" class="form-label">Date</label>
+                            <input type="date" class="form-control" id="scheduled_date" name="scheduled_date" required value="{{ date('Y-m-d') }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="scheduled_time" class="form-label">Time</label>
+                            <input type="time" class="form-control" id="scheduled_time" name="scheduled_time">
+                        </div>
                     </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-success">Check Material Requirements</button>
-                <button type="button" class="btn btn-primary">Schedule</button>
-            </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="quantity" class="form-label">Quantity</label>
+                            <input type="number" class="form-control" id="quantity" name="quantity" step="0.01" min="0.01" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="unit" class="form-label">Unit</label>
+                            <input type="text" class="form-control" id="unit" name="unit" required>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <label for="resource_allocation" class="form-label">Resource Allocation</label>
+                            <div class="row">
+                                @foreach(['Mixing Station 1', 'Mixing Station 2', 'Oven 1', 'Oven 2', 'Decoration Station'] as $index => $resource)
+                                <div class="col-md-6 mb-2">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="resource_allocation[]" value="{{ $resource }}" id="resource{{ $index }}">
+                                        <label class="form-check-label" for="resource{{ $index }}">
+                                            {{ $resource }}
+                                        </label>
+                                    </div>
+                                </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <label for="notes" class="form-label">Notes</label>
+                            <textarea class="form-control" id="notes" name="notes" rows="2"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Schedule Production</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -427,65 +421,91 @@
 @endsection
 
 @push('scripts')
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.10.1/main.min.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/fullcalendar@5.10.1/main.min.css" rel="stylesheet">
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Calendar functionality would be implemented here with a library like FullCalendar
-        console.log('Production calendar initialized');
-        
-        // Sample calendar data - in a real implementation this would come from an API
-        const calendarEvents = [
-            {
-                title: 'Vanilla Cake Base (50 units)',
-                start: '2024-06-17T08:30:00',
-                end: '2024-06-17T11:30:00',
-                color: '#4154f1'
-            },
-            {
-                title: 'Chocolate Frosting (25 kg)',
-                start: '2024-06-17T13:00:00',
-                end: '2024-06-17T15:00:00',
-                color: '#2eca6a'
-            },
-            {
-                title: 'Whole Wheat Bread (40 loaves)',
-                start: '2024-06-18T06:00:00',
-                end: '2024-06-18T09:00:00',
-                color: '#ff771d'
-            }
-        ];
-        
-        // Calendar navigation handlers
-        document.getElementById('prevMonth').addEventListener('click', function() {
-            console.log('Previous month clicked');
-        });
-        
-        document.getElementById('nextMonth').addEventListener('click', function() {
-            console.log('Next month clicked');
-        });
-        
-        document.getElementById('todayBtn').addEventListener('click', function() {
-            console.log('Today button clicked');
-        });
-        
-        // View buttons
-        const viewButtons = document.querySelectorAll('[data-view]');
-        viewButtons.forEach(button => {
-            button.addEventListener('click', function() {
-                viewButtons.forEach(btn => btn.classList.remove('active'));
-                this.classList.add('active');
-                console.log('View changed to:', this.dataset.view);
+        // Initialize FullCalendar
+        const calendarEl = document.getElementById('productionCalendar');
+        if (calendarEl) {
+            const calendar = new FullCalendar.Calendar(calendarEl, {
+                initialView: 'dayGridMonth',
+                headerToolbar: {
+                    left: '',
+                    center: 'title',
+                    right: ''
+                },
+                events: [
+                    @foreach($productionPlans ?? [] as $plan)
+                    {
+                        title: '{{ $plan->title }}',
+                        start: '{{ $plan->scheduled_date->format("Y-m-d") }}{{ $plan->scheduled_time ? "T".$plan->scheduled_time : "" }}',
+                        classNames: [
+                            'bg-{{ $plan->priority === "high" ? "danger" : ($plan->priority === "normal" ? "primary" : "success") }}',
+                            '{{ $plan->status === "completed" ? "opacity-50" : "" }}'
+                        ],
+                        extendedProps: {
+                            status: '{{ $plan->status }}',
+                            priority: '{{ $plan->priority }}',
+                            product: '{{ $plan->assembledItem->name ?? "Unknown" }}',
+                            quantity: '{{ $plan->quantity }} {{ $plan->unit }}'
+                        }
+                    },
+                    @endforeach
+                ],
+                eventClick: function(info) {
+                    alert(`${info.event.title}\nProduct: ${info.event.extendedProps.product}\nQuantity: ${info.event.extendedProps.quantity}\nStatus: ${info.event.extendedProps.status}\nPriority: ${info.event.extendedProps.priority}`);
+                }
             });
-        });
-        
-        // Product selector in modal
-        const productSelect = document.getElementById('productSelect');
-        if (productSelect) {
-            productSelect.addEventListener('change', function() {
-                // In a real implementation, this would populate duration and resource requirements
-                // based on the selected product's recipe
-                console.log('Product selected:', this.value);
+            calendar.render();
+            
+            // Handle month navigation
+            document.getElementById('prevMonth').addEventListener('click', function() {
+                calendar.prev();
+            });
+            
+            document.getElementById('nextMonth').addEventListener('click', function() {
+                calendar.next();
+            });
+            
+            document.getElementById('todayBtn').addEventListener('click', function() {
+                calendar.today();
+            });
+            
+            // Handle view changes
+            document.querySelectorAll('[data-view]').forEach(button => {
+                button.addEventListener('click', function() {
+                    const view = this.getAttribute('data-view');
+                    calendar.changeView(view === 'month' ? 'dayGridMonth' : 
+                                        view === 'week' ? 'timeGridWeek' : 
+                                        view === 'day' ? 'timeGridDay' : 'listWeek');
+                    
+                    // Update active button
+                    document.querySelectorAll('[data-view]').forEach(btn => {
+                        btn.classList.remove('active');
+                    });
+                    this.classList.add('active');
+                });
+            });
+            
+            // Handle month picker change
+            document.getElementById('monthPicker').addEventListener('change', function() {
+                const date = this.value.split('-');
+                calendar.gotoDate(date[0] + '-' + date[1] + '-01');
             });
         }
+        
+        // Handle product selection in the form
+        document.getElementById('assembled_item_id').addEventListener('change', function() {
+            const selectedOption = this.options[this.selectedIndex];
+            if (selectedOption && selectedOption.getAttribute('data-unit')) {
+                document.getElementById('unit').value = selectedOption.getAttribute('data-unit');
+                
+                // Auto-generate title
+                const productName = selectedOption.textContent;
+                document.getElementById('title').value = 'Production of ' + productName;
+            }
+        });
     });
 </script>
 @endpush 
