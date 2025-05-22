@@ -12,6 +12,9 @@ use App\Models\AssemblyCategory;
 use App\Models\AssemblyGroup;
 use App\Models\AssemblySize;
 use App\Models\ManufacturingProcess;
+use App\Models\ProductionPlan;
+use App\Models\ProductionPlanMaterial;
+use App\Models\ManufacturingWaste;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -736,309 +739,561 @@ class ManufacturingController extends Controller
     }
     
     /**
-     * Production Planning
-     * Used to schedule and plan manufacturing activities
+     * Production Planning page
      */
     public function planning()
     {
-        return view('manufacturing.planning');
+        $assembledItems = AssembledItem::where('business_id', session('business_id'))
+            ->orderBy('name')
+            ->get();
+            
+        $productionPlans = ProductionPlan::with(['assembledItem', 'creator'])
+            ->where('business_id', session('business_id'))
+            ->orderBy('scheduled_date')
+            ->get();
+            
+        $upcomingPlans = ProductionPlan::with(['assembledItem'])
+            ->where('business_id', session('business_id'))
+            ->where('status', 'planned')
+            ->where('scheduled_date', '>=', now()->format('Y-m-d'))
+            ->orderBy('scheduled_date')
+            ->orderBy('scheduled_time')
+            ->take(10)
+            ->get();
+            
+        // Get resource allocation data
+        $resources = [
+            ['name' => 'Mixing Station 1', 'today' => 75, 'tomorrow' => 90, 'capacity' => 75, 'status' => 'Available'],
+            ['name' => 'Mixing Station 2', 'today' => 100, 'tomorrow' => 80, 'capacity' => 100, 'status' => 'Fully Booked'],
+            ['name' => 'Oven 1', 'today' => 60, 'tomorrow' => 85, 'capacity' => 60, 'status' => 'Available'],
+            ['name' => 'Oven 2', 'today' => 90, 'tomorrow' => 40, 'capacity' => 90, 'status' => 'Limited'],
+            ['name' => 'Decoration Station', 'today' => 50, 'tomorrow' => 65, 'capacity' => 50, 'status' => 'Available'],
+        ];
+        
+        // Get required materials for today and tomorrow
+        $todayMaterials = $this->calculateRequiredMaterials(now()->format('Y-m-d'));
+        $tomorrowMaterials = $this->calculateRequiredMaterials(now()->addDay()->format('Y-m-d'));
+        $weekMaterials = $this->calculateRequiredMaterials(now()->format('Y-m-d'), now()->addDays(7)->format('Y-m-d'));
+        
+        return view('manufacturing.planning', compact(
+            'assembledItems',
+            'productionPlans',
+            'upcomingPlans',
+            'resources',
+            'todayMaterials',
+            'tomorrowMaterials',
+            'weekMaterials'
+        ));
     }
     
     /**
-     * Waste Management
-     * Used to track and manage waste from manufacturing
+     * Calculate required materials for production plans in a date range
+     */
+    private function calculateRequiredMaterials($startDate, $endDate = null)
+    {
+        $query = ProductionPlan::with(['assembledItem.ingredients.ingredient', 'assembledItem.ingredients.product', 'assembledItem.ingredients.referencedAssembledItem'])
+            ->where('business_id', session('business_id'))
+            ->where('status', 'planned');
+        
+        if ($endDate) {
+            $query->whereBetween('scheduled_date', [$startDate, $endDate]);
+        } else {
+            $query->where('scheduled_date', $startDate);
+        }
+        
+        $plans = $query->get();
+        
+        $materials = [];
+        
+        foreach ($plans as $plan) {
+            if (!$plan->assembledItem || !$plan->assembledItem->ingredients) {
+                continue;
+            }
+            
+            foreach ($plan->assembledItem->ingredients as $ingredient) {
+                $sourceItem = null;
+                $sourceType = null;
+            
+            if ($ingredient->ingredient_id) {
+                    $sourceItem = $ingredient->ingredient;
+                    $sourceType = 'ingredient';
+            } elseif ($ingredient->product_id) {
+                    $sourceItem = $ingredient->product;
+                    $sourceType = 'product';
+            } elseif ($ingredient->assembled_item_id_ref) {
+                    $sourceItem = $ingredient->referencedAssembledItem;
+                    $sourceType = 'assembled_item';
+            }
+            
+                if (!$sourceItem) {
+                    continue;
+                }
+                
+                $requiredQuantity = $ingredient->quantity * $plan->quantity;
+                $itemId = $sourceType . '_' . $sourceItem->id;
+                
+                if (!isset($materials[$itemId])) {
+                    $materials[$itemId] = [
+                        'id' => $sourceItem->id,
+                        'name' => $sourceItem->name,
+                        'type' => $sourceType,
+                        'required' => $requiredQuantity,
+                'unit' => $ingredient->unit,
+                        'in_stock' => $sourceItem->quantity ?? 0,
+                        'status' => ($sourceItem->quantity ?? 0) >= $requiredQuantity ? 'Available' : 'Insufficient'
+                    ];
+                } else {
+                    $materials[$itemId]['required'] += $requiredQuantity;
+                    $materials[$itemId]['status'] = ($sourceItem->quantity ?? 0) >= $materials[$itemId]['required'] ? 'Available' : 'Insufficient';
+                }
+            }
+        }
+        
+        return array_values($materials);
+    }
+
+    /**
+     * Store a new production plan
+     */
+    public function storePlan(Request $request)
+    {
+        $validated = $request->validate([
+            'assembled_item_id' => 'required|exists:assembled_items,id',
+            'title' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'scheduled_date' => 'required|date',
+            'scheduled_time' => 'nullable|date_format:H:i',
+            'quantity' => 'required|numeric|min:0.01',
+            'unit' => 'required|string|max:50',
+            'priority' => 'required|in:high,normal,low',
+            'resource_allocation' => 'nullable|array',
+            'notes' => 'nullable|string',
+        ]);
+        
+        try {
+            $plan = ProductionPlan::create([
+                'business_id' => session('business_id'),
+                'company_id' => session('company_id'),
+                'assembled_item_id' => $validated['assembled_item_id'],
+                'title' => $validated['title'],
+                'description' => $validated['description'],
+                'scheduled_date' => $validated['scheduled_date'],
+                'scheduled_time' => $validated['scheduled_time'],
+                'quantity' => $validated['quantity'],
+                'unit' => $validated['unit'],
+                'priority' => $validated['priority'],
+                'status' => 'planned',
+                'resource_allocation' => $validated['resource_allocation'],
+                'notes' => $validated['notes'],
+                'created_by' => Auth::id(),
+                'updated_by' => Auth::id(),
+            ]);
+            
+            // Calculate and create material requirements
+            $this->createPlanMaterialRequirements($plan);
+            
+            return redirect()->route('bakery.manufacturing.planning')
+                ->with('success', 'Production plan scheduled successfully.');
+        } catch (\Exception $e) {
+            return redirect()->back()
+                ->with('error', 'Failed to schedule production plan: ' . $e->getMessage())
+                ->withInput();
+        }
+    }
+
+    /**
+     * Create material requirements for a production plan
+     */
+    private function createPlanMaterialRequirements(ProductionPlan $plan)
+    {
+        $assembledItem = $plan->assembledItem;
+        
+        if (!$assembledItem || !$assembledItem->ingredients) {
+            return;
+        }
+        
+        foreach ($assembledItem->ingredients as $ingredient) {
+            $sourceType = null;
+            $sourceId = null;
+            
+            if ($ingredient->ingredient_id) {
+                $sourceType = 'ingredient';
+                $sourceId = $ingredient->ingredient_id;
+            } elseif ($ingredient->product_id) {
+                $sourceType = 'product';
+                $sourceId = $ingredient->product_id;
+            } elseif ($ingredient->assembled_item_id_ref) {
+                $sourceType = 'assembled_item';
+                $sourceId = $ingredient->assembled_item_id_ref;
+            }
+            
+            if (!$sourceType || !$sourceId) {
+                continue;
+            }
+            
+            ProductionPlanMaterial::create([
+                'production_plan_id' => $plan->id,
+                'source_type' => $sourceType,
+                'source_id' => $sourceId,
+                'quantity' => $ingredient->quantity * $plan->quantity,
+                'unit' => $ingredient->unit,
+                'status' => 'required'
+            ]);
+        }
+    }
+    
+    /**
+     * Update a production plan status
+     */
+    public function updatePlanStatus(Request $request, ProductionPlan $productionPlan)
+    {   
+        $validated = $request->validate([
+            'status' => 'required|in:planned,in_progress,completed,cancelled',
+        ]);
+        
+        try {
+            $productionPlan->update([
+                'status' => $validated['status'],
+                'updated_by' => Auth::id(),
+            ]);
+            
+            return redirect()->route('bakery.manufacturing.planning')
+                ->with('success', 'Production plan status updated successfully.');
+        } catch (\Exception $e) {
+            return redirect()->back()
+                ->with('error', 'Failed to update production plan status: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Waste Management page
      */
     public function waste()
     {
-        return view('manufacturing.waste');
+        $assembledItems = AssembledItem::where('business_id', session('business_id'))
+            ->orderBy('name')
+            ->get();
+            
+        $query = ManufacturingWaste::with(['manufacturingProcess.assembledItem', 'recordedBy'])
+            ->where('business_id', session('business_id'));
+            
+        // Apply filters if they exist
+        if (request()->has('date_from') && request('date_from')) {
+            $query->where('recorded_at', '>=', request('date_from') . ' 00:00:00');
+        }
+        
+        if (request()->has('date_to') && request('date_to')) {
+            $query->where('recorded_at', '<=', request('date_to') . ' 23:59:59');
+        }
+        
+        if (request()->has('assembled_item_id') && request('assembled_item_id')) {
+            $query->whereHas('manufacturingProcess', function ($q) {
+                $q->where('assembled_item_id', request('assembled_item_id'));
+            });
+        }
+        
+        if (request()->has('ingredient_type') && request('ingredient_type')) {
+            $query->where('source_type', request('ingredient_type'));
+        }
+        
+        if (request()->has('min_waste_percentage') && request('min_waste_percentage')) {
+            $query->where('waste_percentage', '>=', request('min_waste_percentage'));
+        }
+        
+        $wasteRecords = $query->orderBy('recorded_at', 'desc')
+            ->paginate(20);
+            
+        // Calculate waste statistics
+        $wasteCount = $query->count();
+        $averageWastePercentage = $query->avg('waste_percentage') ?? 0;
+        $totalWasteValue = $query->sum('waste_value') ?? 0;
+        
+        // Find the highest waste ingredient
+        $highestWaste = ManufacturingWaste::selectRaw('source_name, SUM(waste_value) as total_waste')
+            ->where('business_id', session('business_id'))
+            ->groupBy('source_name')
+            ->orderByDesc('total_waste')
+            ->first();
+            
+        $highestWasteIngredient = $highestWaste ? $highestWaste->source_name : 'None';
+        
+        // Prepare chart data for waste trends
+        $wasteChartData = $this->getWasteChartData();
+        
+        return view('manufacturing.waste', compact(
+            'wasteRecords',
+            'assembledItems',
+            'wasteCount',
+            'averageWastePercentage',
+            'totalWasteValue',
+            'highestWasteIngredient',
+            'wasteChartData'
+        ));
     }
-    
+
     /**
-     * Efficiency Metrics
-     * Used to track and display manufacturing efficiency
+     * Get waste chart data for the last 30 days
+     */
+    private function getWasteChartData()
+    {
+        $startDate = now()->subDays(29)->format('Y-m-d');
+        $endDate = now()->format('Y-m-d');
+        
+        $wasteData = ManufacturingWaste::selectRaw('DATE(recorded_at) as date, AVG(waste_percentage) as avg_percentage')
+            ->where('business_id', session('business_id'))
+            ->whereBetween('recorded_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
+            ->groupBy('date')
+            ->orderBy('date')
+            ->get();
+            
+        $labels = [];
+        $percentages = [];
+        
+        // Create a date range for the last 30 days
+        $period = new \DatePeriod(
+            new \DateTime($startDate),
+            new \DateInterval('P1D'),
+            new \DateTime($endDate . ' +1 day')
+        );
+        
+        // Initialize with zeros for all dates
+        foreach ($period as $date) {
+            $dateStr = $date->format('Y-m-d');
+            $labels[] = $date->format('M d');
+            $percentages[$dateStr] = 0;
+        }
+        
+        // Fill in actual data where it exists
+        foreach ($wasteData as $item) {
+            $percentages[$item->date] = round($item->avg_percentage, 1);
+        }
+        
+        return [
+            'labels' => $labels,
+            'percentages' => array_values($percentages)
+        ];
+    }
+
+    /**
+     * Efficiency Metrics page
      */
     public function metrics()
     {
-        return view('manufacturing.metrics');
+        $assembledItems = AssembledItem::where('business_id', session('business_id'))
+            ->orderBy('name')
+            ->get();
+            
+        // Apply date filters if they exist
+        $startDate = request('date_from') ? request('date_from') : now()->subDays(30)->format('Y-m-d');
+        $endDate = request('date_to') ? request('date_to') : now()->format('Y-m-d');
+        
+        // Get metrics from the database or calculate them
+        $metrics = $this->getOrCalculateMetrics($startDate, $endDate);
+        
+        // Get product efficiency data
+        $productEfficiency = $this->getProductEfficiencyData($startDate, $endDate);
+        
+        // Get ingredient efficiency data
+        $ingredientEfficiency = $this->getIngredientEfficiencyData($startDate, $endDate);
+        
+        // Prepare chart data for efficiency trends
+        $efficiencyChartData = $this->getEfficiencyChartData($startDate, $endDate);
+        
+        return view('manufacturing.metrics', compact(
+            'assembledItems',
+            'metrics',
+            'productEfficiency',
+            'ingredientEfficiency',
+            'efficiencyChartData',
+            'totalRuns' => $metrics['totalRuns'] ?? 0,
+            'averageWaste' => $metrics['averageWaste'] ?? 0,
+            'productionEfficiency' => $metrics['productionEfficiency'] ?? 0,
+            'mostEfficientProduct' => $metrics['mostEfficientProduct'] ?? 'None'
+        ));
     }
 
-    public function ingredientForm()
-    {
-        return view('manufacturing.partials.ingredient_form');
-    }
-    
     /**
-     * Get assembled item details
+     * Get or calculate metrics for the given date range
      */
-    public function getAssembledItem(AssembledItem $assembledItem)
+    private function getOrCalculateMetrics($startDate, $endDate)
     {
-        return response()->json($assembledItem);
-    }
-    
-    /**
-     * Get ingredients for an assembled item
-     */
-    public function getIngredients(AssembledItem $assembledItem)
-    {
-        $ingredients = $assembledItem->ingredients->map(function ($ingredient) {
-            $sourceName = '';
-            $sourceType = '';
+        // Get completed manufacturing processes in the date range
+        $processes = ManufacturingProcess::where('business_id', session('business_id'))
+            ->where('status', 'completed')
+            ->whereBetween('completed_date', [$startDate, $endDate])
+            ->get();
+        
+        $totalRuns = $processes->count();
+        $totalWaste = 0;
+        $totalEfficiency = 0;
+        $productEfficiency = [];
+        
+        foreach ($processes as $process) {
+            // Calculate waste percentage
+            $wastes = ManufacturingWaste::where('manufacturing_process_id', $process->id)->get();
+            $processWastePercentage = $wastes->avg('waste_percentage') ?? 0;
+            $totalWaste += $processWastePercentage;
             
-            if ($ingredient->ingredient_id) {
-                $sourceName = $ingredient->ingredient->name;
-                $sourceType = 'Raw Ingredient';
-            } elseif ($ingredient->product_id) {
-                $sourceName = $ingredient->product->name;
-                $sourceType = 'Product';
-            } elseif ($ingredient->assembled_item_id_ref) {
-                $sourceName = $ingredient->referencedAssembledItem->name;
-                $sourceType = 'Assembled Item';
+            // Calculate time efficiency
+            $actualTime = $process->actual_time ?? 0;
+            $expectedTime = $process->expected_time ?? 0;
+            $timeEfficiency = $expectedTime > 0 ? min(100, ($expectedTime / max(1, $actualTime)) * 100) : 0;
+            $totalEfficiency += $timeEfficiency;
+            
+            // Track product efficiency
+            if ($process->assembled_item_id) {
+                if (!isset($productEfficiency[$process->assembled_item_id])) {
+                    $productEfficiency[$process->assembled_item_id] = [
+                        'name' => $process->assembledItem->name ?? 'Unknown',
+                        'runs' => 1,
+                        'efficiency' => $timeEfficiency,
+                        'waste' => $processWastePercentage
+                    ];
+                } else {
+                    $productEfficiency[$process->assembled_item_id]['runs']++;
+                    $productEfficiency[$process->assembled_item_id]['efficiency'] += $timeEfficiency;
+                    $productEfficiency[$process->assembled_item_id]['waste'] += $processWastePercentage;
+                }
+            }
+        }
+        
+        // Calculate averages
+        $averageWaste = $totalRuns > 0 ? $totalWaste / $totalRuns : 0;
+        $averageEfficiency = $totalRuns > 0 ? $totalEfficiency / $totalRuns : 0;
+        
+        // Find most efficient product
+        $mostEfficientProduct = 'None';
+        $highestEfficiency = 0;
+        
+        foreach ($productEfficiency as $id => $data) {
+            $avgEfficiency = $data['runs'] > 0 ? $data['efficiency'] / $data['runs'] : 0;
+            if ($avgEfficiency > $highestEfficiency) {
+                $highestEfficiency = $avgEfficiency;
+                $mostEfficientProduct = $data['name'];
+            }
+        }
+        
+        return [
+            'totalRuns' => $totalRuns,
+            'averageWaste' => $averageWaste,
+            'productionEfficiency' => $averageEfficiency,
+            'mostEfficientProduct' => $mostEfficientProduct
+        ];
+    }
+
+    /**
+     * Get product efficiency data for the given date range
+     */
+    private function getProductEfficiencyData($startDate, $endDate)
+    {
+        $productData = [];
+        
+        // Get completed manufacturing processes grouped by product
+        $processes = ManufacturingProcess::with('assembledItem')
+            ->where('business_id', session('business_id'))
+            ->where('status', 'completed')
+            ->whereBetween('completed_date', [$startDate, $endDate])
+            ->get()
+            ->groupBy('assembled_item_id');
+            
+        foreach ($processes as $itemId => $itemProcesses) {
+            if (!$itemId || !$itemProcesses->first()->assembledItem) {
+                continue;
             }
             
-            return [
-                'id' => $ingredient->id,
-                'source_name' => $sourceName,
-                'source_type' => $sourceType,
-                'quantity' => $ingredient->quantity,
-                'unit' => $ingredient->unit,
-                'cost' => $ingredient->cost
+            $assembledItem = $itemProcesses->first()->assembledItem;
+            $runs = $itemProcesses->count();
+            $totalTime = $itemProcesses->sum('actual_time');
+            $avgTime = $runs > 0 ? $totalTime / $runs : 0;
+            
+            // Calculate efficiency
+            $totalEfficiency = 0;
+            foreach ($itemProcesses as $process) {
+                $actualTime = $process->actual_time ?? 0;
+                $expectedTime = $process->expected_time ?? 0;
+                $efficiency = $expectedTime > 0 ? min(100, ($expectedTime / max(1, $actualTime)) * 100) : 0;
+                $totalEfficiency += $efficiency;
+            }
+            $avgEfficiency = $runs > 0 ? $totalEfficiency / $runs : 0;
+            
+            // Calculate trend (compare with previous period)
+            $previousStartDate = date('Y-m-d', strtotime($startDate . ' -' . (strtotime($endDate) - strtotime($startDate)) . ' seconds'));
+            $previousEndDate = date('Y-m-d', strtotime($endDate . ' -' . (strtotime($endDate) - strtotime($startDate)) . ' seconds'));
+            
+            $previousProcesses = ManufacturingProcess::where('business_id', session('business_id'))
+                ->where('assembled_item_id', $itemId)
+            ->where('status', 'completed')
+                ->whereBetween('completed_date', [$previousStartDate, $previousEndDate])
+                ->get();
+                
+            $previousTotalEfficiency = 0;
+            foreach ($previousProcesses as $process) {
+                $actualTime = $process->actual_time ?? 0;
+                $expectedTime = $process->expected_time ?? 0;
+                $efficiency = $expectedTime > 0 ? min(100, ($expectedTime / max(1, $actualTime)) * 100) : 0;
+                $previousTotalEfficiency += $efficiency;
+            }
+            $previousAvgEfficiency = $previousProcesses->count() > 0 ? $previousTotalEfficiency / $previousProcesses->count() : 0;
+            
+            $trend = $previousAvgEfficiency > 0 ? (($avgEfficiency - $previousAvgEfficiency) / $previousAvgEfficiency) * 100 : 0;
+            
+            $productData[] = (object)[
+                'name' => $assembledItem->name,
+                'runs' => $runs,
+                'avg_time' => round($avgTime, 1),
+                'efficiency' => round($avgEfficiency, 1),
+                'trend' => round($trend, 1)
             ];
+        }
+        
+        // Sort by efficiency (descending)
+        usort($productData, function($a, $b) {
+            return $b->efficiency <=> $a->efficiency;
         });
         
-        return response()->json($ingredients);
-    }
-    
-    /**
-     * Get paste divisions for an assembled item
-     */
-    public function getPasteDivisions(AssembledItem $assembledItem)
-    {
-        $divisions = $assembledItem->pasteDivisions()->with('outputItem')->get();
-        
-        return response()->json($divisions);
+        return $productData;
     }
 
     /**
-     * Store a new category via AJAX
+     * Get ingredient efficiency data for the given date range
      */
-    public function storeCategory(Request $request)
+    private function getIngredientEfficiencyData($startDate, $endDate)
     {
-        $validated = $request->validate([
-            'name' => 'required|string|max:100',
-        ]);
+        $ingredientData = [];
         
-        try {
-            // Use business_id from request or session
-            $businessId = $request->input('business_id') ?? session('business_id');
-            \Log::info('storeCategory: using business_id', ['business_id' => $businessId, 'from' => $request->has('business_id') ? 'request' : 'session']);
-            if (!$businessId) {
-                Log::error('No business ID found in session or request', [
-                    'user_id' => Auth::id()
-                ]);
-                return response()->json([
-                    'success' => false,
-                    'message' => 'No active business found. Please contact your administrator.'
-                ], 400);
-            }
-            $category = AssemblyCategory::create([
-                'business_id' => $businessId,
-                'company_id' => Auth::user()->company->id ?? null,
-                'name' => $validated['name'],
-                'is_active' => true
-            ]);
-            Log::info('Category created successfully', [
-                'category_id' => $category->id,
-                'name' => $category->name,
-                'business_id' => $businessId
-            ]);
-            return response()->json([
-                'success' => true,
-                'message' => 'Category created successfully!',
-                'category' => $category
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Failed to create category: ' . $e->getMessage(), [
-                'request_data' => $request->all(),
-                'user_id' => Auth::id()
-            ]);
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to create category: ' . $e->getMessage()
-            ], 500);
+        // Get waste records grouped by ingredient
+        $wastes = ManufacturingWaste::where('business_id', session('business_id'))
+            ->whereBetween('recorded_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
+            ->get()
+            ->groupBy('source_name');
+            
+        foreach ($wastes as $sourceName => $sourceWastes) {
+            $totalUsed = $sourceWastes->sum('used_amount');
+            $totalWaste = $sourceWastes->sum('waste_amount');
+            $wastePercentage = $totalUsed > 0 ? ($totalWaste / $totalUsed) * 100 : 0;
+            $costImpact = $sourceWastes->sum('waste_value');
+            $unit = $sourceWastes->first()->unit;
+            
+            $ingredientData[] = (object)[
+                'name' => $sourceName,
+                'total_used' => round($totalUsed, 2),
+                'unit' => $unit,
+                'waste_percentage' => round($wastePercentage, 1),
+                'cost_impact' => round($costImpact, 2)
+            ];
         }
-    }
-    
-    /**
-     * Store a new group via AJAX
-     */
-    public function storeGroup(Request $request)
-    {   
-        \Log::info('storeGroup called', [
-            'session' => session()->all(),
-            'user_id' => Auth::id(),
-            'request' => $request->all()
-        ]);
-        $validated = $request->validate([
-            'name' => 'required|string|max:100',
-        ]);
-        try {
-            // Use business_id from request or session
-            $businessId = $request->input('business_id') ?? session('business_id');
-            \Log::info('storeGroup: using business_id', ['business_id' => $businessId, 'from' => $request->has('business_id') ? 'request' : 'session']);
-            if (!$businessId) {
-                Log::error('No business ID found in session or request', [
-                    'user_id' => Auth::id()
-                ]);
-                return response()->json([
-                    'success' => false,
-                    'message' => 'No active business found. Please contact your administrator.'
-                ], 400);
-            }
-            $group = AssemblyGroup::create([
-                'business_id' => $businessId,
-                'company_id' => Auth::user()->company->id ?? null,
-                'name' => $validated['name'],
-                'is_active' => true
-            ]);
-            Log::info('Group created successfully', [
-                'group_id' => $group->id,
-                'name' => $group->name,
-                'business_id' => $businessId
-            ]);
-            return response()->json([
-                'success' => true,
-                'message' => 'Group created successfully!',
-                'group' => $group
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Failed to create group: ' . $e->getMessage(), [
-                'request_data' => $request->all(),
-                'user_id' => Auth::id()
-            ]);
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to create group: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-    
-    /**
-     * Store a new size via AJAX
-     */
-    public function storeSize(Request $request)
-    {
-        $validated = $request->validate([
-            'name' => 'required|string|max:100',
-        ]);
-        try {
-            // Use business_id from request or session
-            $businessId = $request->input('business_id') ?? session('business_id');
-            \Log::info('storeSize: using business_id', ['business_id' => $businessId, 'from' => $request->has('business_id') ? 'request' : 'session']);
-            if (!$businessId) {
-                Log::error('No business ID found in session or request', [
-                    'user_id' => Auth::id()
-                ]);
-                return response()->json([
-                    'success' => false,
-                    'message' => 'No active business found. Please contact your administrator.'
-                ], 400);
-            }
-            $size = AssemblySize::create([
-                'business_id' => $businessId,
-                'company_id' => Auth::user()->company->id ?? null,
-                'name' => $validated['name'],
-                'is_active' => true
-            ]);
-            Log::info('Size created successfully', [
-                'size_id' => $size->id,
-                'name' => $size->name,
-                'business_id' => $businessId
-            ]);
-            return response()->json([
-                'success' => true,
-                'message' => 'Size created successfully!',
-                'size' => $size
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Failed to create size: ' . $e->getMessage(), [
-                'request_data' => $request->all(),
-                'user_id' => Auth::id()
-            ]);
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to create size: ' . $e->getMessage()
-            ], 500);
-        }
+        
+        // Sort by waste percentage (descending)
+        usort($ingredientData, function($a, $b) {
+            return $b->waste_percentage <=> $a->waste_percentage;
+        });
+        
+        return $ingredientData;
     }
 
     /**
-     * AJAX: Check if assembled item name is unique
+     * Get efficiency chart data for the given date range
      */
-    public function checkNameUnique(Request $request)
-    {
-        $name = $request->input('name');
-        $id = $request->input('id');
-        $query = \App\Models\AssembledItem::where('business_id', session('business_id'))
-            ->where('name', $name);
-        if ($id) {
-            $query->where('id', '!=', $id);
-        }
-        $exists = $query->exists();
-        return response()->json(['unique' => !$exists]);
-    }
-
-    /**
-     * Get the available quantity of paste for division
-     */
-    public function getPasteAvailability($processId)
-    {
-        $businessId = session('business_id');
-        $process = \App\Models\ManufacturingProcess::where('business_id', $businessId)
-            ->where('id', $processId)
-            ->where('status', 'completed')
-            ->firstOrFail();
-        
-        $totalPasteQty = $process->output_quantity ?? 0;
-        $usedQty = \App\Models\PasteDivision::where('paste_process_id', $processId)
-            ->sum('paste_quantity');
-        
-        $availableQty = $totalPasteQty - $usedQty;
-        
-        return response()->json([
-            'success' => true,
-            'total_qty' => $totalPasteQty,
-            'used_qty' => $usedQty,
-            'available_qty' => $availableQty
-        ]);
-    }
-
-    /**
-     * Divide a paste into portions
-     */
-    public function dividePaste(Request $request)
-    {
-        $businessId = session('business_id');
-        
-        $validated = $request->validate([
-            'paste_id' => 'required|exists:manufacturing_processes,id',
-            'paste_name' => 'required|string',
-            'paste_quantity' => 'required|numeric|min:0.01',
-            'output_quantity' => 'required|numeric|min:1',
-            'output_unit' => 'required|string',
-            'is_existing_item' => 'sometimes|boolean',
-            'output_assembled_item_id' => 'nullable|exists:assembled_items,id',
-            'output_name' => 'nullable|string|max:255',
-            'output_type' => 'nullable|string|in:single,box',
-            'flavor' => 'nullable|string',
-            'flavor_quantity' => 'nullable|numeric',
-            'flavor_cost' => 'nullable|numeric',
-            'division_notes' => 'nullable|string'
-        ]);
-        
-        // Get the process
-        $process = \App\Models\ManufacturingProcess::where('id', $validated['paste_id'])
-            ->where('business_id', $businessId)
-            ->where('status', 'completed')
             ->firstOrFail();
         
         // Check if there's enough paste available
