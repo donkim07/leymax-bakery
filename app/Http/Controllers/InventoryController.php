@@ -340,4 +340,87 @@ class InventoryController extends Controller
 
         return $this->paginatedResponse($alerts);
     }
+
+    /**
+     * Display bakery stock adjustments
+     */
+    public function bakeryAdjustments()
+    {
+        $businessId = session('business_id');
+        $stores = Store::where('business_id', $businessId)->where('is_active', true)->get();
+        $products = Product::where('business_id', $businessId)->where('track_inventory', true)->get();
+        
+        return view('bakery.inventory.adjustments', compact('stores', 'products'));
+    }
+    
+    /**
+     * Display bakery stock movement
+     */
+    public function bakeryMovement()
+    {
+        $businessId = session('business_id');
+        $stores = Store::where('business_id', $businessId)->where('is_active', true)->get();
+        $products = Product::where('business_id', $businessId)->where('track_inventory', true)->get();
+        
+        // Get recent movements
+        $movements = InventoryMovement::where('business_id', $businessId)
+            ->with(['product', 'store', 'creator'])
+            ->latest()
+            ->paginate(20);
+            
+        return view('bakery.inventory.movement', compact('stores', 'products', 'movements'));
+    }
+    
+    /**
+     * Display bakery transfers
+     */
+    public function bakeryTransfers()
+    {
+        $businessId = session('business_id');
+        $stores = Store::where('business_id', $businessId)->where('is_active', true)->get();
+        $products = Product::where('business_id', $businessId)->where('track_inventory', true)->get();
+        
+        // Get recent transfers
+        $transfers = InventoryMovement::where('business_id', $businessId)
+            ->where('type', InventoryMovement::TYPE_TRANSFER)
+            ->with(['product', 'store', 'creator'])
+            ->latest()
+            ->paginate(20);
+            
+        return view('bakery.inventory.transfers', compact('stores', 'products', 'transfers'));
+    }
+    
+    /**
+     * Display bakery inventory alerts
+     */
+    public function bakeryAlerts()
+    {
+        $businessId = session('business_id');
+        
+        // Get low stock alerts
+        $lowStock = Inventory::where('business_id', $businessId)
+            ->with(['product', 'store'])
+            ->whereRaw('available_quantity <= (SELECT alert_quantity FROM products WHERE products.id = inventory.product_id)')
+            ->whereHas('product', function($query) {
+                $query->where('alert_quantity', '>', 0);
+            })
+            ->get();
+            
+        // Get expiring inventory
+        $expiring = Inventory::where('business_id', $businessId)
+            ->with(['product', 'store'])
+            ->whereNotNull('expiry_date')
+            ->whereDate('expiry_date', '<=', now()->addDays(30))
+            ->whereDate('expiry_date', '>=', now())
+            ->get();
+            
+        // Get expired inventory
+        $expired = Inventory::where('business_id', $businessId)
+            ->with(['product', 'store'])
+            ->whereNotNull('expiry_date')
+            ->whereDate('expiry_date', '<', now())
+            ->get();
+            
+        return view('bakery.inventory.alerts', compact('lowStock', 'expiring', 'expired'));
+    }
 } 
